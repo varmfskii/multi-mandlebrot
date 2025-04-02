@@ -29,6 +29,13 @@ void help(FILE *);
 void set_pixel(unsigned char *img, int x, int y, unsigned char *color);
 void write_ppm(char *name, int w, int h, unsigned char *img);
 
+inline double gettime(void) {
+  struct timespec tspec;
+
+  clock_gettime(CLOCK_REALTIME, &tspec);
+  return tspec.tv_sec+1e-9*tspec.tv_nsec;
+}
+
 unsigned char **palette;
 
 unsigned char cga_palette[16][3] = { // CGA 16-color palette, as RGB
@@ -96,7 +103,6 @@ void *rowthread(void *v) {
 
 int main(int argc, char *argv[]) {
   double start, end;
-  struct timespec tspec;
   int py,i, opt;
   pthread_t *rowthreads;
   char opts[]="h:i:o:t:w:?";
@@ -159,12 +165,11 @@ int main(int argc, char *argv[]) {
     return -1;
   }
   
-  rowthreads = malloc(sizeof(pthread_t)*num_threads);
+  if (num_threads>1) rowthreads = malloc(sizeof(pthread_t)*num_threads);
   img = create_image(width, height);
   palette=malloc(max_iter*sizeof(unsigned char *));
   for (int j=0; j<max_iter; j++) palette[j]=malloc(3*sizeof(unsigned char));
-  clock_gettime(CLOCK_REALTIME, &tspec);
-  start = tspec.tv_sec+1e-9*tspec.tv_nsec;
+  start = gettime();
 
   for (i=0; i<max_iter; i++) {
     if (i<16) {
@@ -186,15 +191,18 @@ int main(int argc, char *argv[]) {
     }
   }
 
-  for (i=0; i<num_threads-1; i++)
-    pthread_create(rowthreads+i, NULL, rowthread, NULL);
-  rowthread(NULL);
-  for(i=0; i<num_threads-1; i++) pthread_join(rowthreads[i], NULL);
+  if (num_threads>1) {
+    for (i=0; i<num_threads-1; i++)
+      pthread_create(rowthreads+i, NULL, rowthread, NULL);
+    rowthread(NULL);
+    for(i=0; i<num_threads-1; i++) pthread_join(rowthreads[i], NULL);
+  } else {
+    for(i=0; i<height; i++) dorow(i);
+  }
 
   write_ppm(outname, width, height, img);
 
-  clock_gettime(CLOCK_REALTIME, &tspec);
-  end = tspec.tv_sec+1e-9*tspec.tv_nsec;
+  end = gettime();
 
   printf("Elapsed Time: %f s\n", end-start);
 
